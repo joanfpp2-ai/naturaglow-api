@@ -4,7 +4,7 @@
 
 ## Description
 
-NaturaGlow is a Peruvian e-commerce platform for natural and organic cosmetics with a social component, where customers share their skincare routines, comment and react to products. This repository contains its **application tier**: a REST API built with **Node.js, Express and Mongoose** that exposes full CRUD operations over the **MongoDB** document database (`NATURAGLOW_DB`). The API and the database run in **Docker containers** orchestrated with Docker Compose on a cloud virtual machine (Ubuntu Server on Microsoft Azure). The deployment includes API key authentication, input validation, referential integrity checks, MongoDB access control and persistent storage.
+NaturaGlow is a Peruvian e-commerce platform for natural and organic cosmetics with a social component, where customers share their skincare routines, comment and react to products. This repository contains its **application tier**: a REST API built with **Node.js, Express and Mongoose** that exposes full CRUD operations over the **MongoDB** document database (`NATURAGLOW_DB`). The API and the database run in **Docker containers** orchestrated with Docker Compose on a cloud virtual machine (Ubuntu Server on Microsoft Azure).
 
 ## Team
 
@@ -17,133 +17,98 @@ NaturaGlow is a Peruvian e-commerce platform for natural and organic cosmetics w
 
 ---
 
-Capa de aplicación (*Application Tier*) de NaturaGlow: **API REST CRUD** en **Node.js + Express + Mongoose**, ejecutándose en **contenedores Docker** sobre una VM en la nube, conectada a **MongoDB** (`NATURAGLOW_DB`, mismo modelo de 14 colecciones de la PC3).
+## Endpoints
 
-```
- Postman / Frontend  ──HTTP :3000──►  contenedor_api (Node 24 + Express)  ──red interna──►  contenedor_db (MongoDB 9.0)
-   (Presentation)                         (Application Tier)                                   (Data Tier, volumen persistente)
-```
+Base: `http://localhost:3000` (o `http://IP_DE_LA_VM:3000`). Toda ruta `/api/...` exige la cabecera **`x-api-key`** con el valor de `API_KEY` del `.env`.
 
-## Colecciones expuestas (12 de 14)
+Cada colección tiene:
 
-| Recurso | Colección | Recurso | Colección |
-|---|---|---|---|
-| `/api/usuarios` | usuarios | `/api/actividad` | actividad |
-| `/api/perfiles` | perfiles | `/api/pedidos` | pedidos (items embebidos) |
-| `/api/productos` | productos | `/api/metodos-pago` | metodos_pago |
-| `/api/inventario` | inventario | `/api/repartidores` | repartidores |
-| `/api/publicaciones` | publicaciones | `/api/promociones` | promociones |
-| `/api/comentarios` | comentarios | `/api/notificaciones` | notificaciones |
-
-`me_gusta` y `seguidores` son **colecciones intermedias** (relaciones muchos a muchos sin datos propios), por eso **no** se exponen como recurso. Sí se usan para validar la integridad al borrar. `items` no es una colección: va embebido dentro de `pedidos`.
-
-Cada recurso tiene:
-
-| Operación | Método y ruta | Notas |
+| Método | Ruta | Acción |
 |---|---|---|
-| Insert | `POST /api/<recurso>` | Valida tipos, enums y que los `*_id` referenciados existan (422 si no) |
-| Select | `GET /api/<recurso>` | Filtros `?campo=valor`, `limit`, `skip`, `sort`, `populate=true` |
-| Select uno | `GET /api/<recurso>/:id` | `?populate=true` une las colecciones referenciadas |
-| Update | `PUT /api/<recurso>/:id` | Actualiza solo los campos enviados, con validación |
-| Delete | `DELETE /api/<recurso>/:id` | 409 si otro documento lo referencia (como `ON DELETE RESTRICT`) |
+| `POST` | `/api/<coleccion>` | Crear |
+| `GET` | `/api/<coleccion>` | Listar (filtro opcional: `?campo=valor`) |
+| `GET` | `/api/<coleccion>/:id` | Obtener uno (`?populate=true` trae los documentos referenciados) |
+| `PUT` | `/api/<coleccion>/:id` | Actualizar solo los campos enviados |
+| `DELETE` | `/api/<coleccion>/:id` | Eliminar |
 
-Rutas públicas: `GET /` (información) y `GET /api/health` (estado de la conexión a la BD y el id del contenedor).
+Colecciones: `usuarios`, `perfiles`, `productos`, `inventario`, `publicaciones`, `comentarios`, `actividad`, `pedidos`, `metodos-pago`, `repartidores`, `promociones`, `notificaciones`.
 
-## Seguridad e integración
+Además: `GET /api/health` (estado de la conexión a MongoDB; no pide API key).
 
-- **API key** en la cabecera `x-api-key`, obligatoria para todo `/api/*`.
-- **helmet** (cabeceras HTTP seguras), **CORS**, **rate limit** (300 peticiones cada 15 min), body JSON de máximo 100 KB.
-- **strict mode**: un campo que no existe en el esquema se rechaza con 400 (evita la asignación masiva de campos).
-- MongoDB **con autenticación**. La API usa el usuario `ng_api`, que solo tiene `readWrite` sobre `NATURAGLOW_DB` (mínimo privilegio). Esto corrige el riesgo 1 de la PC3.
-- **Volumen persistente** `mongo_data`: los datos sobreviven a `docker compose down`. Esto corrige el riesgo 2 de la PC3.
-- El puerto de MongoDB **no** se expone a Internet: solo en `127.0.0.1` de la VM, y se accede con un túnel SSH.
-- El contenedor de la API corre como usuario `node` (no root) y tiene `HEALTHCHECK`.
+## Body de los POST
 
----
+Los campos `*_id` deben ser el `_id` de un documento que ya exista, así que crea los documentos en el orden de esta lista; si no, la API responde **422**. No envíes campos que no estén en la lista, porque responde **400**. Los campos marcados como *opcional* toman un valor por defecto.
 
-## Correr localmente (Windows con Docker Desktop)
-
-La API no se ejecuta con el botón *Run* del IDE ni con Live Server. Se levanta con Docker Compose, que inicia a la vez la API y MongoDB.
-
-1. Instala **Docker Desktop** (https://www.docker.com/products/docker-desktop/) y ábrelo hasta que diga *Engine running*.
-2. Si todavía tienes el contenedor de la PC3 usando el puerto 27017, detenlo: `docker stop naturaglow`
-3. En una terminal (PowerShell, o la terminal integrada de IntelliJ o VS Code) dentro de la carpeta del proyecto:
-   ```powershell
-   copy .env.example .env
-   docker compose up -d --build
-   docker compose ps
-   ```
-4. Abre http://localhost:3000/api/health: debe responder `"estado": "ok"`.
-5. En Postman, en las variables de la colección: `baseUrl = http://localhost:3000` y `apiKey = cambia-esta-clave` (el valor de `API_KEY` en `.env`).
-6. Compass: `mongodb://ng_root:cambia-esta-clave@localhost:27017/?authSource=admin`
-
-Para apagarlo usa `docker compose down`; los datos se conservan. El script `mongo-init` solo se ejecuta cuando el volumen está vacío: para volver a cargar los datos iniciales, usa `docker compose down -v` y luego `docker compose up -d`.
-
----
-
-## Despliegue en la VM (Azure)
-
-### 1. Crear la VM
-- Imagen: **Ubuntu Server 24.04 LTS**. Tamaño sugerido: **Standard B2s** (2 vCPU, 4 GB RAM), disco de 30 GB.
-- Autenticación con **clave SSH**; usuario `azureuser`.
-- Puertos de entrada (NSG): **22 (SSH)** y **3000 (API)**. Si el asistente solo permite 22, agrega después en *Redes → Agregar regla de puerto de entrada*: TCP 3000, origen *Any*.
-
-### 2. Conectarse e instalar
-```bash
-ssh -i ruta/a/tu-clave.pem azureuser@IP_PUBLICA_VM
-git clone https://github.com/joanfpp2-ai/naturaglow-api.git
-cd naturaglow-api
-bash scripts/setup-vm.sh
-```
-El script instala Docker Engine y Compose, genera `.env` con claves aleatorias, construye la imagen y levanta los dos contenedores. Al final muestra la **URL** y la **API key** para Postman.
-
-### 3. Probar con Postman
-1. *Import* → `postman/NaturaGlow_PC4.postman_collection.json`.
-2. En la colección → *Variables*: `baseUrl = http://IP_PUBLICA_VM:3000` y `apiKey = <API_KEY del .env>`.
-3. Ejecuta las carpetas en orden: **0. Salud → 1. INSERT → 2. SELECT → 3. UPDATE → 4. Validaciones → 5. DELETE → 6. Verificar borrado**. También puedes usar *Run collection* para correrlas todas: son 82 peticiones y 152 pruebas.
-
-### 4. Ver los datos en MongoDB Compass (túnel SSH)
-```bash
-# En tu PC (deja esta terminal abierta)
-ssh -i ruta/a/tu-clave.pem -L 27018:127.0.0.1:27017 azureuser@IP_PUBLICA_VM
-```
-En Compass: `mongodb://ng_root:<MONGO_ROOT_PASSWORD>@localhost:27018/?authSource=admin`
-
----
-
-## Comandos útiles para las evidencias (en la VM)
-
-```bash
-sudo docker compose ps                         # los 2 contenedores Up (healthy)
-sudo docker ps                                 # puertos publicados
-sudo docker images                             # imagen naturaglow-api:1.0 y mongo:9.0
-sudo docker compose logs -f api                # log de cada peticion HTTP
-sudo docker network inspect naturaglow-api_naturaglow_net
-sudo docker volume ls                          # volumen persistente
-sudo docker exec contenedor_api cat /etc/os-release   # SO del contenedor (Alpine)
-curl -s localhost:3000/api/health
-
-# Consola de MongoDB para comprobar que los datos cambian de verdad
-sudo docker exec -it contenedor_db mongosh -u ng_root -p "$(grep MONGO_ROOT_PASSWORD .env | cut -d= -f2)" --authenticationDatabase admin NATURAGLOW_DB
-#   > db.usuarios.find()            (antes y despues de cada POST/PUT/DELETE)
-#   > db.getUsers()                 (usuario ng_api con rol readWrite)
-
-# Ciclo de vida
-sudo docker compose stop     # detener
-sudo docker compose start    # reanudar (los datos se conservan)
-sudo docker compose down     # eliminar contenedores (el volumen se conserva)
+**`/api/usuarios`**: `rol` es opcional (`cliente` o `admin`); el `email` debe ser único.
+```json
+{ "nombre": "Valeria Paredes", "email": "valeria@mail.com", "telefono": "987000111", "rol": "cliente" }
 ```
 
-## Estructura
+**`/api/perfiles`**: un perfil por usuario. `tipo_piel` puede ser `seca`, `grasa`, `mixta`, `normal` o `sensible`. `bio`, `foto`, `seguidores` y `siguiendo` son opcionales.
+```json
+{ "usuario_id": "<_id de usuarios>", "usuario": "@valeria", "bio": "Piel sensible", "tipo_piel": "sensible" }
+```
 
+**`/api/productos`**: `organico`, `imagen` e `ingredientes` son opcionales.
+```json
+{ "nombre": "Jabon de avena", "categoria": "Cuidado corporal", "precio": 18.9, "organico": true, "envase": "caja", "ingredientes": ["avena", "miel"] }
 ```
-src/
-  server.js              arranque, conexión a MongoDB con reintentos, apagado ordenado
-  app.js                 middleware (helmet, cors, morgan, rate limit, api key) y rutas
-  lib/crudRouter.js      genera las 5 rutas CRUD de cada colección
-  lib/referencias.js     integridad referencial (FK emuladas) en la capa de aplicación
-  models/*.model.js      esquemas Mongoose de las 14 colecciones
-mongo-init/              crea el usuario ng_api, los índices únicos y los 47 documentos iniciales
-postman/                 colección de Postman con el ciclo CRUD completo
-scripts/setup-vm.sh      instalación de Docker y despliegue en Ubuntu
+
+**`/api/inventario`**: un registro por producto. `ultima_reposicion` es opcional.
+```json
+{ "producto_id": "<_id de productos>", "stock": 50, "stock_minimo": 10, "almacen": "Lima Sur" }
 ```
+
+**`/api/publicaciones`**: `imagen`, `me_gusta` y `fecha` son opcionales.
+```json
+{ "usuario_id": "<_id de usuarios>", "producto_id": "<_id de productos>", "texto": "Me encanto este jabon" }
+```
+
+**`/api/comentarios`**
+```json
+{ "publicacion_id": "<_id de publicaciones>", "usuario_id": "<_id de usuarios>", "texto": "Lo recomiendo" }
+```
+
+**`/api/actividad`**: `tipo` puede ser `publicacion`, `me_gusta` o `comentario`.
+```json
+{ "usuario_id": "<_id de usuarios>", "tipo": "publicacion", "referencia_id": "<_id de publicaciones>" }
+```
+
+**`/api/metodos-pago`**: con `tarjeta` se envían `marca` y `ultimos_digitos` (4 dígitos); con `yape` o `plin` se envía `numero` (9 dígitos que empiecen con 9).
+```json
+{ "usuario_id": "<_id de usuarios>", "tipo": "tarjeta", "marca": "Visa", "ultimos_digitos": "1111", "predeterminado": true }
+```
+```json
+{ "usuario_id": "<_id de usuarios>", "tipo": "yape", "numero": "987654322" }
+```
+
+**`/api/repartidores`**: `vehiculo` puede ser `moto`, `bicicleta` o `auto`. `activo` y `entregas` son opcionales.
+```json
+{ "nombre": "Diego Rojas", "telefono": "911223344", "vehiculo": "moto", "zona": "Lima Centro" }
+```
+
+**`/api/pedidos`**: `subtotal` y `total` los calcula la API. `repartidor_id` es opcional. `estado` puede ser `pendiente` (por defecto), `pagado`, `enviado`, `entregado` o `cancelado`.
+```json
+{
+  "usuario_id": "<_id de usuarios>",
+  "metodo_pago_id": "<_id de metodos-pago>",
+  "items": [ { "producto_id": "<_id de productos>", "cantidad": 2, "precio_unitario": 45.9 } ],
+  "envio": 12,
+  "direccion": "Av. Primavera 123, Surco"
+}
+```
+
+**`/api/promociones`**: `codigo` debe ser único. Con tipo `porcentaje` se envía `categoria`; con tipo `envio`, `monto_minimo`. `fin` debe ser igual o posterior a `inicio`.
+```json
+{ "codigo": "NATURA15", "descripcion": "15% en cuidado facial", "descuento": 15, "tipo": "porcentaje", "categoria": "Cuidado facial", "inicio": "2026-11-01", "fin": "2026-12-31" }
+```
+```json
+{ "codigo": "ENVIO100", "descripcion": "Envio gratis desde S/ 100", "descuento": 12, "tipo": "envio", "monto_minimo": 100, "inicio": "2026-11-01", "fin": "2026-12-31" }
+```
+
+**`/api/notificaciones`**: `tipo` puede ser `pedido`, `social` o `promocion`. `leida` es opcional.
+```json
+{ "usuario_id": "<_id de usuarios>", "tipo": "pedido", "texto": "Recibimos tu pedido" }
+```
+
+En Postman: **Body → raw → JSON**.
