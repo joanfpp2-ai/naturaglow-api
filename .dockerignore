@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log
+.env
+.git
+.gitignore
+postman
+scripts
+docs
+README.md
+docker-compose.yml
+mongo-init
