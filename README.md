@@ -61,6 +61,26 @@ Rutas públicas: `GET /` (información) y `GET /api/health` (estado de la conexi
 
 ---
 
+## Correr localmente (Windows con Docker Desktop)
+
+La API no se ejecuta con el botón *Run* del IDE ni con Live Server. Se levanta con Docker Compose, que inicia a la vez la API y MongoDB.
+
+1. Instala **Docker Desktop** (https://www.docker.com/products/docker-desktop/) y ábrelo hasta que diga *Engine running*.
+2. Si todavía tienes el contenedor de la PC3 usando el puerto 27017, detenlo: `docker stop naturaglow`
+3. En una terminal (PowerShell, o la terminal integrada de IntelliJ o VS Code) dentro de la carpeta del proyecto:
+   ```powershell
+   copy .env.example .env
+   docker compose up -d --build
+   docker compose ps
+   ```
+4. Abre http://localhost:3000/api/health: debe responder `"estado": "ok"`.
+5. En Postman, en las variables de la colección: `baseUrl = http://localhost:3000` y `apiKey = cambia-esta-clave` (el valor de `API_KEY` en `.env`).
+6. Compass: `mongodb://ng_root:cambia-esta-clave@localhost:27017/?authSource=admin`
+
+Para apagarlo usa `docker compose down`; los datos se conservan. El script `mongo-init` solo se ejecuta cuando el volumen está vacío: para volver a cargar los datos iniciales, usa `docker compose down -v` y luego `docker compose up -d`.
+
+---
+
 ## Despliegue en la VM (Azure)
 
 ### 1. Crear la VM
