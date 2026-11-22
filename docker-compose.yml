@@ -1,0 +1,55 @@
+# NaturaGlow - PC4: capa de aplicacion en contenedores
+#   contenedor_api : API REST (Node.js + Express)  -> puerto publico ${API_PORT}
+#   contenedor_db  : MongoDB 9.0 con autenticacion -> solo accesible desde la red interna
+#                    y desde la propia VM (127.0.0.1) para tunel SSH con Compass
+
+services:
+  db:
+    image: mongo:9.0
+    container_name: contenedor_db
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: NATURAGLOW_DB
+      MONGO_APP_USER: ${MONGO_APP_USER}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD}
+    volumes:
+      - mongo_data:/data/db                                  # volumen persistente (riesgo 2 de la PC3)
+      - ./mongo-init:/docker-entrypoint-initdb.d:ro          # crea usuario de la API + datos iniciales
+    ports:
+      - "127.0.0.1:27017:27017"                              # NO expuesto a Internet
+    networks:
+      - naturaglow_net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  api:
+    build: .
+    image: naturaglow-api:1.0
+    container_name: contenedor_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      API_KEY: ${API_KEY}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      # "db" es el nombre del servicio: Docker lo resuelve por DNS interno
+      MONGO_URI: mongodb://${MONGO_APP_USER}:${MONGO_APP_PASSWORD}@db:27017/NATURAGLOW_DB?authSource=NATURAGLOW_DB
+    ports:
+      - "${API_PORT:-3000}:3000"
+    networks:
+      - naturaglow_net
+
+volumes:
+  mongo_data:
+
+networks:
+  naturaglow_net:
+    driver: bridge
